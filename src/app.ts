@@ -1,3 +1,4 @@
+/* eslint-disable prettier/prettier */
 import express from "express";
 import "dotenv/config";
 import userRoutes from "./routes/user.routes";
