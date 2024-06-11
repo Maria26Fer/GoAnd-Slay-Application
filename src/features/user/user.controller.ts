@@ -1,8 +1,14 @@
-/* eslint-disable prettier/prettier */
 import { Request, Response } from "express";
 import { createUserSchema, updateUserSchema } from "./schemes";
 import { randomUUID } from "crypto";
 import { z } from "zod";
+import {
+  EMAIL_IS_NOT_VALID,
+  formatError,
+  INVALID_FIELDS,
+  INVALID_ID,
+  USER_NOT_FOUND,
+} from "src/common/errors";
 
 type UserProps = {
   id: string;
@@ -13,70 +19,93 @@ type UserProps = {
 
 const users: Array<UserProps> = [];
 
-export const getUsers = (req: Request, res: Response) => {
-  return res.status(200).send({ data: users });
+const uuidSchema = z.string().uuid(); // Definindo um schema para validação de um uuid;
+
+const checkUniqueEmail = (email: string, id?: string) => {
+  const findUser = users.find((user) => user.email === email); // Verifica se tem um usuario com esse email
+
+  if (findUser) {
+    // se encontrar um usuario
+    if (findUser?.id === id) {
+      // verifica se é o mesmo id do usuario que esta sendo atualizado
+      return true;
+    } else {
+      return false; // se não for, então o email não é unico
+    }
+  }
+  return true;
 };
 
-const uuidSchema = z.string().uuid(); // Definindo um schema para validação de um uuid;
+export const getUsers = (req: Request, res: Response) => {
+  return res.status(200).json({ data: users });
+};
 
 export const getUserById = (req: Request, res: Response) => {
   try {
-    const id = req.params.id;
+    const userId = req.params.id;
 
-    const idValidation = uuidSchema.safeParse(id); // Faz a validação do id conforme foi definido no schema
+    const { success, data } = uuidSchema.safeParse(userId); // Faz a validação do id conforme foi definido no schema;
 
-    if (!idValidation.success) {
-      // Está verificando se foi bem sucedida
-      return res.status(400).json({ error: "Invalid Id" });
+    if (!success) {
+      return res.status(400).json({ error: INVALID_ID });
     }
 
-    const user = users.find((user) => user.id === id);
+    const user = users.find((user) => user.id === data);
 
     if (user) {
-      res.json(user);
+      res.status(200).json({ data: user });
     } else {
-      res.status(404).json({ message: "User not found" });
+      res.status(404).json({ error: USER_NOT_FOUND });
     }
   } catch (error) {
-    res.status(500).send({
-      error,
+    res.status(400).send({
+      error: formatError(error),
     });
   }
 };
 
 export const createUser = (req: Request, res: Response) => {
   try {
-    const data = createUserSchema.parse(req.body);
+    const data = createUserSchema.strict(INVALID_FIELDS).parse(req.body); // Valida os campos recebidos do body
 
-    const invalidEmail = users?.find((user) => user.email === data?.email);
+    const uniqueEmail = checkUniqueEmail(data.email);
 
-    if (invalidEmail) return res.status(401).send({ error: "Invalid e-mail!" });
+    if (!uniqueEmail)
+      return res.status(400).send({ error: EMAIL_IS_NOT_VALID });
 
     const id = randomUUID(); // Irá gerar um id aleatorio;
 
-    users.push({
+    const newUser = {
       ...data,
       id,
-    });
+    };
 
-    return res.status(201).send({ data: { id } });
+    users.push(newUser);
+
+    return res.status(201).json({ data: newUser });
   } catch (error) {
-    res.status(500).send({
-      error,
+    res.status(400).send({
+      error: formatError(error),
     });
   }
 };
 
-export function updateUser(req: Request, res: Response) {
+export const updateUser = (req: Request, res: Response) => {
   try {
-    const data = updateUserSchema.parse(req.body); // Validando os dados de entrada
+    const data = updateUserSchema.strict(INVALID_FIELDS).parse(req.body); // Validando os dados de entrada;
 
     const userId = req.params.id;
 
     const existingUser = users.find((user) => user.id === userId);
 
     if (!existingUser) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ error: USER_NOT_FOUND });
+    }
+
+    if (data.email) {
+      const uniqueEmail = checkUniqueEmail(data.email, userId);
+      if (!uniqueEmail)
+        return res.status(400).send({ error: EMAIL_IS_NOT_VALID });
     }
     /*
     Vai encontrar o index que possui o mesmo id que será atualizado, a função irá
@@ -91,38 +120,38 @@ export function updateUser(req: Request, res: Response) {
     - ... Faz a mesclagem dos dados;
     */
     users[updateUserIndex] = {
-      // Irá atualizar os usuarios na lista de users substituindo os dados novos
+      // Irá atualizar os usuarios na lista de users substituindo os dados novos;
       ...users[updateUserIndex],
       ...data,
     };
 
-    return res.status(200).json({ updateUser: users[updateUserIndex] });
+    return res.status(200).json({ data: users[updateUserIndex] });
   } catch (error) {
-    res.status(500).send({
-      error,
+    res.status(400).send({
+      error: formatError(error),
     });
   }
-}
+};
 
 export const deleteUser = (req: Request, res: Response) => {
   try {
     const userId = req.params.id;
     /*
-    Vai buscar o usuariário pelo Id, se encontrar ele irá ser removido, 
+    Vai buscar o usuário pelo Id, se encontrar ele irá ser removido, 
     se não irá emitir uma mensagem de erro;
     */
     const userIndex = users.findIndex((user) => user.id === userId);
 
     if (userIndex === -1) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({ error: USER_NOT_FOUND });
     }
 
     users.splice(userIndex, 1); // Remove o usuário do array;
 
-    return res.status(200).json({ message: "User deleted successfully" });
+    return res.status(200).json({ message: "User deleted successfully!" });
   } catch (error) {
-    res.status(500).send({
-      error,
+    res.status(400).send({
+      error: formatError(error),
     });
   }
 };
