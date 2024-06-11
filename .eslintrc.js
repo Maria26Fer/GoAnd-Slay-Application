@@ -1,4 +1,3 @@
-/* eslint-disable prettier/prettier */
 module.exports = {
   env: {
     es2021: true,
@@ -31,6 +30,9 @@ module.exports = {
   settings: {
     "import/parsers": {
       [require.resolve("@typescript-eslint/parser")]: [".ts", ".tsx", ".d.ts"],
+    },
+    "import/resolver": {
+      typescript: {},
     },
   },
 };
